@@ -7,6 +7,7 @@ require(lubridate)
 
 # UK data ---------------------------------------------------------------------------
 
+# BIG TEST DE FOLIE
 
 # Données de prélèvement 
 read_excel("../../../LIFE_Donnees/BDD_Oxyura/UK/Clean/cull.xlsx",

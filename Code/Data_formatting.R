@@ -86,8 +86,14 @@ UK_nb %>%
   ungroup() %>% 
   select(-obs) -> UK_sex_app
   
+<<<<<<< HEAD
 # one pools data from a same month and year, and keeps the biggest count
 # No 0 in the monthly protocol, so impossible to interpolate over the sites.
+=======
+# protocole mensuel pas les 0, donc pas sur que protocole soit carré...
+
+# one pools data from a same month and year, and keeps the biggest count
+>>>>>>> d3c030bbfa6b8197299598aa2281422d276418cc
 UK_nb %>% 
   filter(month(date) %in% c(12, 1), obs != 0) %>%
   mutate(date_av = ymd(str_c(year(date), month(date), 15, sep = "-"))) %>% 
@@ -133,9 +139,61 @@ UK_nb_4 %>%
   geom_line(linetype = "dashed") +
   geom_point(aes(color = source))
 
+<<<<<<< HEAD
 # UK sample data: age evolution ------------------------------------------------------
 
 # age of the samples over the year 
+=======
+# UK sample data formatting ------------------------------------------------------------
+
+get_year <- function(x) {
+  UK_nb_4 %>% filter(start <= x, end >= x) %>% pull(year)}
+
+# attribution to the right year: a removal counts after the maximum winter count
+UK_kill %>% 
+  rowwise() %>% 
+  mutate(year = get_year(date)) %>% 
+  left_join(UK_nb_4 %>% select(start, end, year)) -> UK_kill_2
+
+# raw dataviz  
+UK_kill_2 %>% 
+  group_by(year, age_sex) %>% 
+  summarize(across(shot, sum)) %>% 
+  ggplot(aes(x = year, y = shot, fill = age_sex)) +
+  geom_col()
+
+# 
+UK_kill_2 %>% 
+  mutate(repro = if_else(date < year + months(6), "before", "after"),
+         age_sex = age_sex %>% str_replace("no_", "no-"),
+         age = age_sex %>% str_extract(regex(".*(?=_)")),
+         sex = age_sex %>% str_extract(regex("(?<=_).*")),
+         age = if_else(age %in% c("ad", "ind"), age, "no_ad")) %>% 
+  group_by(year, start, end, repro, age, sex) %>% 
+  summarize(across(shot, sum)) %>%
+  ungroup() -> UK_kill_3
+
+crossing(UK_nb_4 %>% distinct(year, start, end), UK_kill_3 %>% distinct(repro, age, sex)) %>% 
+  left_join(UK_kill_3 %>% select(-c(start, end))) %>% 
+  mutate(shot = shot %>% replace_na(0)) -> UK_kill_4
+
+UK_kill_4 %>% 
+  filter(age != "ind", sex != "ind") %>% 
+  group_by(age) %>%
+  nest() %>% 
+  mutate(data = data %>% 
+           map( ~.x %>% 
+                  mutate(tot = sum(shot)) %>% 
+                  filter(sex == "mal") %>%
+                  summarize(mal = sum(shot),
+                            tot = unique(tot), 
+                            ratio = mal/tot))) %>%
+  unnest(data) %>% 
+  ungroup()
+# -> sexe ratio male : 60% pour les adultes, 54% pour les jeunes, pas d'évolution cohérente avant après printemps
+
+# age ratio 
+>>>>>>> d3c030bbfa6b8197299598aa2281422d276418cc
 UK_kill %>% 
   mutate(age = age_sex %>% str_extract(regex(".*(?=_)"))) %>% 
   group_by(yday = yday(date),
@@ -165,10 +223,21 @@ UK_age %>%
   ggplot(aes(x = yday,  y = prop, color = age)) +
   geom_point() +
   geom_smooth()
+<<<<<<< HEAD
 # chicks appears from the 150th day (1st of June)
 # Juvenile character disappears by the end of the winter
 # best picture of the recruitment in winter because there are many samples and 
 # it is the last moment with the juvenile character
+=======
+# les anglais tuent toute l'année, on voit bien la période printanière ou tous sont adultes
+
+UK_prop %>% 
+  group_by(yday, age) %>% 
+  summarize(across(shot, sum)) %>% 
+  ggplot(aes(x = yday, y = shot, fill = age)) +
+  geom_col(position = "dodge")
+# gros prélèvement en hiver, donc on a la proportion du recrutement dans les hivernants
+>>>>>>> d3c030bbfa6b8197299598aa2281422d276418cc
 
 # age proportion by year
 UK_age %>% 

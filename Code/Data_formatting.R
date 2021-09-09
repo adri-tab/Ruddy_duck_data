@@ -1,7 +1,6 @@
 Sys.setlocale("LC_ALL", "English")
 
 require(tidyverse)
-require(xlsx)
 require(readxl)
 require(lubridate)
 

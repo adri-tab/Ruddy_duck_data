@@ -1,5 +1,3 @@
-# big test
-
 Sys.setlocale("LC_ALL", "English")
 
 require(tidyverse)
@@ -23,7 +21,19 @@ read_excel("./Data/UK/count.xlsx",
   select(-age_sex, -...1) %>% 
   arrange(date, site_code) -> UK_nb
 
-# UK count data: pop size formatting -------------------------------------------------
+# UK count data: apparent winter sex counts -----------------------------------------
+
+# male proportion (only based on winter counts)
+UK_nb %>% 
+  filter(!is.na(obs_type_fem) & !is.na(obs_type_mal)) %>%
+  mutate(year = if_else(month(date) == 1, year(date), year(date) + 1) %>% 
+           str_c("0101") %>% ymd()) %>% 
+  group_by(year, date) %>% 
+  summarize(across(starts_with("obs"), sum)) %>% 
+  ungroup() %>% 
+  select(-obs) -> UK_sex_app
+
+# UK count data: pop size ------------------------------------------------------------
 
 UK_nb %>% 
   group_by(site_code, year = year(date), month = month(date)) %>% 
@@ -77,16 +87,6 @@ UK_nb %>%
   geom_smooth() +
   geom_point() +
   scale_size(trans = "log10")
-
-# male proportion (only based on winter counts)
-UK_nb %>% 
-  filter(!is.na(obs_type_fem) & !is.na(obs_type_mal)) %>%
-  mutate(year = if_else(month(date) == 1, year(date), year(date) + 1) %>% 
-           str_c("0101") %>% ymd()) %>% 
-  group_by(year, date) %>% 
-  summarize(across(starts_with("obs"), sum)) %>% 
-  ungroup() %>% 
-  select(-obs) -> UK_sex_app
 
 # one pools data from a same month and year, and keeps the biggest count
 # No 0 in the monthly protocol, so impossible to interpolate over the sites.
@@ -217,9 +217,13 @@ UK_kill_2 %>%
          age = age_sex %>% str_extract(regex(".*(?=_)")),
          sex = age_sex %>% str_extract(regex("(?<=_).*")),
          age = age %>% str_replace("-", "_"),
-         age = if_else(date < year + months(5), "ad", age),
+         recruited = case_when(
+           date < year + months(5) | age == "ad" ~ "yes",
+           date >= year + months(5) & age == "no_ad" ~ "no",
+           date >= year + months(5) & age == "ind" ~ "ind",
+           TRUE ~ NA_character_),
          repro = if_else(date < year + months(6), "before_rep", "after_rep")) %>% 
-  group_by(year, start, end, repro, age, sex) %>% 
+  group_by(year, start, end, repro, age, recruited, sex) %>% 
   summarize(across(shot, sum)) %>%
   ungroup() -> UK_kill_3
 
@@ -233,14 +237,21 @@ UK_kill_3 %>%
 
 # full dataset
 crossing(UK_nb_4 %>% distinct(year, start, end), 
-         UK_kill_3 %>% distinct(repro, age, sex)) %>% 
-  left_join(UK_kill_3 %>% select(-c(start, end))) %>% 
+         UK_kill_3 %>% distinct(repro, recruited, sex)) %>% 
+  left_join(UK_kill_3 %>% select(-c(start, end, age))) %>% 
   mutate(shot = shot %>% replace_na(0)) -> UK_kill_4
 
-# male proportion in the samples
-UK_kill_4 %>% 
+
+# UK sample data: adult male target -------------------------------------------------
+
+# one remove the samples on the period that recruits loose their recruits character
+UK_kill_2 %>% 
+  mutate(age_sex = age_sex %>% str_replace("no_", "no-"),
+         age = age_sex %>% str_extract(regex(".*(?=_)")),
+         sex = age_sex %>% str_extract(regex("(?<=_).*")),
+         age = age %>% str_replace("-", "_")) %>% 
   filter(age != "ind", sex != "ind") %>% 
-  group_by(age, repro) %>%
+  group_by(age, month = month(date), year) %>%
   nest() %>% 
   mutate(data = data %>% 
            map( ~.x %>% 
@@ -250,7 +261,16 @@ UK_kill_4 %>%
                             tot = unique(tot), 
                             ratio = mal/tot))) %>%
   unnest(data) %>% 
-  ungroup()
+  ungroup() -> UK_target
+
+UK_target %>% 
+  ggplot(aes(x = month, y = ratio, group = age, fill = age)) +
+  geom_col(position = "dodge") +
+  geom_text(aes(label = round(tot)), position = "dodge") +
+  facet_wrap(~ year)
+
+
+
 # -> male proportion: 59.4% for adults, 52.4% pour the chicks
 # more males after reproduction in the samples -> validation of higher male survival
 # assumption that average is ok to be considered as the target

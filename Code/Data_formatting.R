@@ -579,6 +579,7 @@ FR_kill_2 %>%
   ungroup()
 # -> male proportion: 60% for adults, consistent with UK data
 
+<<<<<<< HEAD
 # FR sample data: removal formatting -------------------------------------------------
 
 # attribution to the right year: 
@@ -586,6 +587,17 @@ FR_kill_2 %>%
   left_join(FR_count %>% select(start, end, year)) -> FR_kill_3
 
 FR_kill_3 %>% 
+=======
+# UK sample data: removal formatting -------------------------------------------------
+
+# attribution to the right year: 
+FR_kill_2 %>% 
+  rowwise() %>% 
+  mutate(year = get_year(date)) %>% 
+  left_join(FR_nb_3 %>% select(start, end, year)) -> UK_kill_2
+
+UK_kill %>% 
+>>>>>>> 8e7b0351167a72392254b72cb8da20efca0026da
   mutate(age = age_sex %>% str_extract(regex(".*(?=_)")),
          month = month(date, label = TRUE)) %>% 
   group_by(year = year(date), month, age) %>% 
@@ -600,17 +612,32 @@ FR_kill_3 %>%
 # but by precaution, one remove the juveniles also in May in case 
 # they are chicks of the year
 
+<<<<<<< HEAD
 FR_kill_3 %>% 
   mutate(age = age_sex %>% str_extract(regex(".*(?=_)")),
          sex = age_sex %>% str_extract(regex("(?<=_).*")),
+=======
+UK_kill_2 %>% 
+  mutate(age_sex = age_sex %>% str_replace("no_", "no-"),
+         age = age_sex %>% str_extract(regex(".*(?=_)")),
+         sex = age_sex %>% str_extract(regex("(?<=_).*")),
+         age = age %>% str_replace("-", "_"),
+>>>>>>> 8e7b0351167a72392254b72cb8da20efca0026da
          repro = if_else(date < year + months(6), "before_rep", "after_rep"),
          repro = if_else(month(date) == 5 & age == "no_ad", "after_rep", repro)) %>% 
   group_by(year, start, end, repro, age, sex) %>% 
   summarize(across(shot, sum)) %>%
+<<<<<<< HEAD
   ungroup() -> FR_kill_4
 
 # raw dataviz of the removals by year
 FR_kill_4 %>% 
+=======
+  ungroup() -> UK_kill_3
+
+# raw dataviz of the removals by year
+UK_kill_3 %>% 
+>>>>>>> 8e7b0351167a72392254b72cb8da20efca0026da
   mutate(age_sex = str_c(age, "_", sex)) %>% 
   group_by(year, age_sex) %>% 
   summarize(across(shot, sum)) %>% 
@@ -618,6 +645,7 @@ FR_kill_4 %>%
   geom_col()
 
 # full dataset
+<<<<<<< HEAD
 crossing(FR_count %>% distinct(year, start, end), 
          FR_kill_4 %>% distinct(repro, age, sex)) %>% 
   left_join(FR_kill_4 %>% select(-c(start, end))) %>% 
@@ -628,6 +656,28 @@ FR_kill_5 %>%
   filter(repro == "before_rep") %>% 
   group_by(year) %>% 
   summarize(killed_before_rep = sum(shot)) -> FR_to_remove
+=======
+crossing(UK_nb_4 %>% distinct(year, start, end), 
+         UK_kill_3 %>% distinct(repro, age, sex)) %>% 
+  left_join(UK_kill_3 %>% select(-c(start, end))) %>% 
+  mutate(shot = shot %>% replace_na(0)) -> UK_kill_4
+
+UK_kill_4 %>% 
+  filter(repro == "before_rep") %>% 
+  group_by(year) %>% 
+  summarize(killed_before_rep = sum(shot)) -> UK_to_remove
+
+
+
+
+
+
+
+
+
+
+
+>>>>>>> 8e7b0351167a72392254b72cb8da20efca0026da
 
 # to chek  --------------------------------------------------------------------------
 

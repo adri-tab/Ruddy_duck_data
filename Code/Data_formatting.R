@@ -443,13 +443,14 @@ FR_kill %>%
   rowwise() %>% 
   mutate_at(vars(starts_with("Nb")), replace_na, 0) %>% 
   mutate(
-    check = sum(Nb_tue_fem_ad, Nb_tue_mal_ad, Nb_tue_juv, Nb_tue_pulli, Nb_tue_ind, Nb_tue_oeuf),
+    check = sum(Nb_tue_fem_ad, Nb_tue_mal_ad, Nb_tue_juv, Nb_tue_pulli, Nb_tue_ind, 
+                Nb_tue_oeuf),
     Nb_tue_tot = case_when(
       is.na(Nb_tue_tot) ~ check,
       Nb_tue_tot < check ~ check,
       TRUE ~ Nb_tue_tot),
-    Nb_tue_ind = if_else(check < Nb_tue_tot, Nb_tue_ind + (Nb_tue_tot - check), Nb_tue_ind)
-  ) %>% 
+    Nb_tue_ind = if_else(check < Nb_tue_tot, Nb_tue_ind + (Nb_tue_tot - check), 
+                         Nb_tue_ind)) %>% 
   filter(Nb_tue_tot > 0) %>% 
   mutate(ad_fem = Nb_tue_fem_ad, 
          ad_mal = Nb_tue_mal_ad, 
@@ -511,8 +512,8 @@ FR_kill_2 %>%
   filter(age == "ad") %>% 
   ggplot(aes(x = month, y = ratio)) +
   geom_col()
-# -> not a clear switch by the end of January, ok to consider the winter as a 
-# good picture of the juvenile proportion
+# -> not a clear switch by the end of January, but almost no removal son complicated to
+# judge on this, ok to consider the winter as a good picture of the juvenile proportion
 
 # age proportion by year
 FR_age %>% 
@@ -579,7 +580,6 @@ FR_kill_2 %>%
   ungroup()
 # -> male proportion: 60% for adults, consistent with UK data
 
-<<<<<<< HEAD
 # FR sample data: removal formatting -------------------------------------------------
 
 # attribution to the right year: 
@@ -587,17 +587,6 @@ FR_kill_2 %>%
   left_join(FR_count %>% select(start, end, year)) -> FR_kill_3
 
 FR_kill_3 %>% 
-=======
-# UK sample data: removal formatting -------------------------------------------------
-
-# attribution to the right year: 
-FR_kill_2 %>% 
-  rowwise() %>% 
-  mutate(year = get_year(date)) %>% 
-  left_join(FR_nb_3 %>% select(start, end, year)) -> UK_kill_2
-
-UK_kill %>% 
->>>>>>> 8e7b0351167a72392254b72cb8da20efca0026da
   mutate(age = age_sex %>% str_extract(regex(".*(?=_)")),
          month = month(date, label = TRUE)) %>% 
   group_by(year = year(date), month, age) %>% 

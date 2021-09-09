@@ -21,18 +21,6 @@ read_excel("./Data/UK/count.xlsx",
   select(-age_sex, -...1) %>% 
   arrange(date, site_code) -> UK_nb
 
-# UK count data: apparent winter sex counts -----------------------------------------
-
-# male proportion (only based on winter counts)
-UK_nb %>% 
-  filter(!is.na(obs_type_fem) & !is.na(obs_type_mal)) %>%
-  mutate(year = if_else(month(date) == 1, year(date), year(date) + 1) %>% 
-           str_c("0101") %>% ymd()) %>% 
-  group_by(year, date) %>% 
-  summarize(across(starts_with("obs"), sum)) %>% 
-  ungroup() %>% 
-  select(-obs) -> UK_sex_app
-
 # UK count data: pop size ------------------------------------------------------------
 
 UK_nb %>% 
@@ -135,7 +123,28 @@ UK_nb_4 %>%
   geom_line(linetype = "dashed") +
   geom_point(aes(color = source))
 
-# UK sample data: age evolution ------------------------------------------------------
+# UK count data: apparent winter sex counts -----------------------------------------
+
+# male proportion (only based on winter counts)
+UK_nb %>% 
+  filter(!is.na(obs_type_fem) & !is.na(obs_type_mal)) %>%
+  mutate(year = if_else(month(date) == 1, year(date), year(date) + 1) %>% 
+           str_c("0101") %>% ymd()) %>% 
+  group_by(year, date) %>% 
+  summarize(across(starts_with("obs"), sum)) %>% 
+  ungroup() %>% 
+  select(-obs) -> UK_sex_app
+
+UK_nb_4 %>% 
+  select(year) %>% 
+  full_join(UK_sex_app) %>% 
+  mutate(across(starts_with("obs"), ~ .x %>% replace_na(0))) %>% 
+  group_by(year) %>% 
+  nest() %>% 
+  ungroup() %>% 
+  rename(sex_app = data) -> UK_sex_app_2
+
+# UK sample data: age evolution analyses ---------------------------------------------
 
 # age of the samples over the year 
 UK_kill %>% 
@@ -164,13 +173,27 @@ UK_age %>%
   unnest(data) %>% 
   ungroup() %>% 
   mutate(prop = shot / tot) %>% 
-  ggplot(aes(x = yday,  y = prop, color = age)) +
+  ggplot(aes(x = yday, y = prop, color = age)) +
   geom_point() +
   geom_smooth()
 # chicks appears from the 150th day (1st of June)
 # Juvenile character disappears by the end of the winter
 # best picture of the recruitment in winter because there are many samples and 
 # it is the last moment with the juvenile character
+
+# Adult proportion in the removals over the year
+UK_kill %>% 
+  mutate(age = age_sex %>% str_extract(regex(".*(?=_)"))) %>% 
+  filter(age != "ind") %>% 
+  group_by(age, month = month(date, label = TRUE)) %>% 
+  summarize(across(shot, sum)) %>% 
+  group_by(month) %>% 
+  mutate(ratio = shot / sum(shot))  %>% 
+  filter(age == "ad") %>% 
+  ggplot(aes(x = month, y = ratio)) +
+  geom_col()
+# -> switch by the end of March, ok to consider the winter as a good picture of the 
+# juvenile proportion
 
 # age proportion by year
 UK_age %>% 
@@ -188,70 +211,22 @@ UK_age %>%
   facet_wrap(~ year) +
   ylim(c(0, 1))
 
-# très variables d'une année à l'autre, mais il y a moyen d'estimer la prop de jeunes 
-# en prenant une fenetre large
-# Bourse de Fabricius visible 8 mois environ, source?
-# repro commence autour du 1er Juin donc jusqu'au 1er février, on détecte tous les jeunes. 
-# on peut faire une moyenne depuis le 1er décembre
+# il y a moyen d'estimer la prop de jeunes en prenant une fenetre large
+# Bourse de Fabricius visible 8 mois environ, source? & repro commence vers le 1er Juin 
+# donc on détecte theoriquement tous les jeunes jusqu'au 1er février 
+# ca semble même plus large car il y a un switch qu'à partir de fin mars
+# on pourrait mm prendre en compte les samples en février jusqu'à la mi mars visiblement
 
-# UK sample data: removal formatting -------------------------------------------------
+# UK sample data: adult male proportion target ---------------------------------------
 
-# function to attribute the right year
-get_year <- function(x) {
-  UK_nb_4 %>% filter(start <= x, end >= x) %>% pull(year)}
-
-# attribution to the right year: 
-# one accounts for a removal if it is after the date of the winter count
+# evolution of the sex ratio over the year
 UK_kill %>% 
-  rowwise() %>% 
-  mutate(year = get_year(date)) %>% 
-  left_join(UK_nb_4 %>% select(start, end, year)) -> UK_kill_2
-
-# a juvenile is recruited at the date of the winter count
-# so juveniles born the previous year are converted into adults
-# since no new chicks are observed before May, it is the criterion for the conversion.
-# since the reproduction starts in June, removals before the 1st June could not breed
-# They are thus considered as killed before reproduction
-UK_kill_2 %>% 
-  mutate(age_sex = age_sex %>% str_replace("no_", "no-"),
-         age = age_sex %>% str_extract(regex(".*(?=_)")),
-         sex = age_sex %>% str_extract(regex("(?<=_).*")),
-         age = age %>% str_replace("-", "_"),
-         recruited = case_when(
-           date < year + months(5) | age == "ad" ~ "yes",
-           date >= year + months(5) & age == "no_ad" ~ "no",
-           date >= year + months(5) & age == "ind" ~ "ind",
-           TRUE ~ NA_character_),
-         repro = if_else(date < year + months(6), "before_rep", "after_rep")) %>% 
-  group_by(year, start, end, repro, age, recruited, sex) %>% 
-  summarize(across(shot, sum)) %>%
-  ungroup() -> UK_kill_3
-
-# raw dataviz of the removals by year
-UK_kill_3 %>% 
-  mutate(age_sex = str_c(age, "_", sex)) %>% 
-  group_by(year, age_sex) %>% 
-  summarize(across(shot, sum)) %>% 
-  ggplot(aes(x = year, y = shot, fill = age_sex)) +
-  geom_col()
-
-# full dataset
-crossing(UK_nb_4 %>% distinct(year, start, end), 
-         UK_kill_3 %>% distinct(repro, recruited, sex)) %>% 
-  left_join(UK_kill_3 %>% select(-c(start, end, age))) %>% 
-  mutate(shot = shot %>% replace_na(0)) -> UK_kill_4
-
-
-# UK sample data: adult male target -------------------------------------------------
-
-# one remove the samples on the period that recruits loose their recruits character
-UK_kill_2 %>% 
   mutate(age_sex = age_sex %>% str_replace("no_", "no-"),
          age = age_sex %>% str_extract(regex(".*(?=_)")),
          sex = age_sex %>% str_extract(regex("(?<=_).*")),
          age = age %>% str_replace("-", "_")) %>% 
   filter(age != "ind", sex != "ind") %>% 
-  group_by(age, month = month(date), year) %>%
+  group_by(age, month = month(date, label = TRUE)) %>%
   nest() %>% 
   mutate(data = data %>% 
            map( ~.x %>% 
@@ -266,18 +241,32 @@ UK_kill_2 %>%
 UK_target %>% 
   ggplot(aes(x = month, y = ratio, group = age, fill = age)) +
   geom_col(position = "dodge") +
-  geom_text(aes(label = round(tot)), position = "dodge") +
-  facet_wrap(~ year)
+  geom_text(aes(label = round(tot))) + 
+  ylim(0, 1)
+# no trend over the year, on can use the average for adult
 
-
-
-# -> male proportion: 59.4% for adults, 52.4% pour the chicks
-# more males after reproduction in the samples -> validation of higher male survival
-# assumption that average is ok to be considered as the target
+UK_kill %>% 
+  mutate(age_sex = age_sex %>% str_replace("no_", "no-"),
+         age = age_sex %>% str_extract(regex(".*(?=_)")),
+         sex = age_sex %>% str_extract(regex("(?<=_).*")),
+         age = age %>% str_replace("-", "_")) %>% 
+  filter(age != "ind", sex != "ind") %>% 
+  group_by(age) %>%
+  nest() %>% 
+  mutate(data = data %>% 
+           map(~ .x %>% 
+                 mutate(tot = sum(shot)) %>% 
+                 filter(sex == "mal") %>%
+                 summarize(mal = sum(shot),
+                           tot = unique(tot), 
+                           ratio = mal/tot))) %>%
+  unnest(data) %>% 
+  ungroup()
+# -> male proportion: 60% for adults, 54% pour the chicks
 
 # UK sample data: recruit proportion -------------------------------------------------
 
-# for recruit proportion: one considers only winter samples
+# one consider only winter age difference as explained before (age evolution analyses)
 UK_kill %>% 
   filter(month(date) %in% c(12, 1)) %>% 
   mutate(year = if_else(month(date) == 12, year(date) + 1, year(date)) %>% 
@@ -286,17 +275,18 @@ UK_kill %>%
   group_by(year) %>% 
   nest() %>% 
   mutate(data = 
-           data %>% map(~ 
-                          tibble(
-                            ad = .x %>% filter(age_sex %>% str_starts("ad")) %>% 
-                              pull(shot) %>% sum(),
-                            no_ad = .x %>% filter(age_sex %>% str_detect("no_ad")) %>% 
-                              pull(shot) %>% sum()))) %>% 
+           data %>% 
+           map(~ tibble(
+             ad = .x %>% filter(age_sex %>% str_starts("ad")) %>% 
+               pull(shot) %>% sum(),
+             no_ad = .x %>% filter(age_sex %>% str_detect("no_ad")) %>% 
+               pull(shot) %>% sum()))) %>% 
   unnest(data) %>% 
   ungroup() %>%
   filter(ad + no_ad > 0) %>% 
   arrange(year) -> UK_prop
 
+# full time series
 UK_nb_4 %>% 
   select(year) %>% 
   left_join(UK_prop) %>%
@@ -306,21 +296,73 @@ UK_nb_4 %>%
   ungroup() %>% 
   rename(age = data) -> UK_prop_2
 
-UK_nb_4 %>% 
-  select(year) %>% 
-  full_join(UK_sex_app) %>% 
-  mutate(across(starts_with("obs"), ~ .x %>% replace_na(0))) %>% 
+# UK sample data: removal formatting -------------------------------------------------
+
+# function to attribute the right year
+get_year <- function(x) {
+  UK_nb_4 %>% filter(start <= x, end >= x) %>% pull(year)}
+
+# attribution to the right year: 
+UK_kill %>% 
+  rowwise() %>% 
+  mutate(year = get_year(date)) %>% 
+  left_join(UK_nb_4 %>% select(start, end, year)) -> UK_kill_2
+
+UK_kill %>% 
+  mutate(age = age_sex %>% str_extract(regex(".*(?=_)")),
+         month = month(date, label = TRUE)) %>% 
+  group_by(year = year(date), month, age) %>% 
+  summarize(across(shot, sum)) %>% 
+  ggplot(aes(x = month, y = shot, fill = age)) +
+  geom_col(position = "dodge")
+
+# Any removal must be subtracted from the pop size if it was killed after the date of 
+# the winter count but before the reproduction
+# so one must differentiate removals between this period in the year
+# since no few chicks are observed before June, it is the criterion for the conversion.
+# but by precaution, one remove the juveniles also in May in case 
+# they are chicks of the year
+
+UK_kill_2 %>% 
+  mutate(age_sex = age_sex %>% str_replace("no_", "no-"),
+         age = age_sex %>% str_extract(regex(".*(?=_)")),
+         sex = age_sex %>% str_extract(regex("(?<=_).*")),
+         age = age %>% str_replace("-", "_"),
+         repro = if_else(date < year + months(6), "before_rep", "after_rep"),
+         repro = if_else(month(date) == 5 & age == "no_ad", "after_rep", repro)) %>% 
+  group_by(year, start, end, repro, age, sex) %>% 
+  summarize(across(shot, sum)) %>%
+  ungroup() -> UK_kill_3
+
+# raw dataviz of the removals by year
+UK_kill_3 %>% 
+  mutate(age_sex = str_c(age, "_", sex)) %>% 
+  group_by(year, age_sex) %>% 
+  summarize(across(shot, sum)) %>% 
+  ggplot(aes(x = year, y = shot, fill = age_sex)) +
+  geom_col()
+
+# full dataset
+crossing(UK_nb_4 %>% distinct(year, start, end), 
+         UK_kill_3 %>% distinct(repro, age, sex)) %>% 
+  left_join(UK_kill_3 %>% select(-c(start, end))) %>% 
+  mutate(shot = shot %>% replace_na(0)) -> UK_kill_4
+
+UK_kill_4 %>% 
+  filter(repro == "before_rep") %>% 
   group_by(year) %>% 
-  nest() %>% 
-  ungroup() %>% 
-  rename(sex_app = data) -> UK_sex_app_2
+  summarize(killed_before_rep = sum(shot)) -> UK_to_remove
+
+# UK count data: merge to complete all variables -------------------------------------
 
 UK_nb_4 %>% 
-  left_join(UK_prop_2) %>% 
-  left_join(UK_sex_app_2) -> UK_count
+  left_join(UK_to_remove) %>% 
+  left_join(UK_sex_app_2) %>% 
+  left_join(UK_prop_2) -> UK_count
 
-# FR data ---------------------------------------------------------------------------
+# FR data import ----------------------------------------------------------------------
 
+# sample data
 read_excel("./Data/FR/Observation_et_operation_2021-01-16.xlsx",
            na = c("", "NA"),
            col_types = c("date", rep("guess", 45)),
@@ -329,19 +371,23 @@ read_excel("./Data/FR/Observation_et_operation_2021-01-16.xlsx",
          Dpt = as.character(Dpt)) %>%
   filter(Date > ymd("1950-01-01")) -> FR_kill
 
-# données de comptages
+# count data
 read_excel("./Data/FR/Comptage_hiver_2021-01-16.xlsx", 
            na = c("", "NA"), col_types = c("date", rep("numeric", 3))) %>% 
   mutate(Date = date(Date)) %>% 
   rename(date = Date, tot = Total, mal_nb = M, fem_nb = `F`) -> FR_nb
 
-# on récupère les données de comptages 
-FR_nb %>% 
-  mutate(year = if_else(month(date) > 6, year(date) + 1, year(date)) %>% str_c("0101") %>% ymd()) %>% 
-  arrange(year) %>% 
-  select(year, date, count = tot, obs_type_mal = mal_nb, obs_type_fem = fem_nb) -> FR_nb_2
+# FR count data: size - app sex - no rec prop ----------------------------------------
 
-# on récupère les données de comptages dans la base générale
+# winter counts 
+FR_nb %>% 
+  mutate(year = if_else(month(date) > 6, year(date) + 1, year(date)) %>% 
+           str_c("0101") %>% ymd()) %>% 
+  arrange(year) %>% 
+  select(year, date, count = tot, 
+         obs_type_mal = mal_nb, obs_type_fem = fem_nb) -> FR_nb_2
+
+# all year counts
 FR_kill %>% 
   filter(Lieu_nom == "LAC DE GRAND LIEU", 
          month(Date) %in% c(10, 11, 12, 1, 2, 3),
@@ -380,7 +426,7 @@ FR_nb_3 %>%
   mutate(end = c(.$start[-1], last(.$start) + years(1)) - days(1)) %>% 
   select(year, start, end, count, site, source, age, sex_app) -> FR_count
 
-# données shot
+# FR sample data: age evolution analyses ---------------------------------------------
 
 get_year_2 <- function(x) {
   FR_count %>% filter(start <= x, end >= x) %>% pull(year)}
@@ -418,6 +464,174 @@ FR_kill %>%
   ungroup() %>% 
   pivot_longer(contains("_"), names_to = "age_sex", values_to = "shot") -> FR_kill_2
 
+
+# age of the samples over the year 
+FR_kill_2 %>% 
+  mutate(age = age_sex %>% str_extract(regex(".*(?=_)"))) %>% 
+  group_by(yday = yday(date),
+           year = year(date), 
+           age) %>% 
+  summarize(across(shot, sum)) %>% 
+  ungroup() -> FR_age
+
+# sampling intensity over the year
+FR_age %>% 
+  group_by(yday, age) %>% 
+  summarize(across(shot, sum)) %>% 
+  ggplot(aes(x = yday, y = shot, fill = age)) +
+  geom_col(position = "dodge")
+# high sampling pressure in summer
+
+# age proportion in the samples 
+FR_age %>% 
+  group_by(yday, age) %>% 
+  summarize(across(shot, sum)) %>% 
+  group_by(yday) %>% 
+  nest() %>% 
+  mutate(tot = data %>% map_dbl(~ .x %>% pull(shot) %>% sum())) %>% 
+  unnest(data) %>% 
+  ungroup() %>% 
+  mutate(prop = shot / tot) %>% 
+  ggplot(aes(x = yday, y = prop, color = age)) +
+  geom_point() +
+  geom_smooth()
+# chicks appears from the 125th day (1st of May)
+# No data in winter but UK shows juvenile character disappears by the end of the winter
+# best picture of the recruitment in winter because there are many samples and 
+# it is the last moment with the juvenile character
+
+# Adult proportion in the removals over the year
+FR_kill_2 %>% 
+  mutate(age = age_sex %>% str_extract(regex(".*(?=_)"))) %>% 
+  filter(age != "ind") %>% 
+  group_by(age, month = month(date, label = TRUE)) %>% 
+  summarize(across(shot, sum)) %>% 
+  group_by(month) %>% 
+  mutate(ratio = shot / sum(shot))  %>% 
+  filter(age == "ad") %>% 
+  ggplot(aes(x = month, y = ratio)) +
+  geom_col()
+# -> not a clear switch by the end of January, ok to consider the winter as a 
+# good picture of the juvenile proportion
+
+# age proportion by year
+FR_age %>% 
+  group_by(yday) %>% 
+  nest() %>% 
+  mutate(tot = data %>% 
+           map_dbl(~ .x %>% filter(age!= "ind") %>% pull(shot) %>% sum())) %>% 
+  unnest(data) %>% 
+  ungroup() %>% 
+  mutate(prop = shot / tot) %>%
+  filter(age == "jeu") %>% 
+  ggplot(aes(x = yday,  y = prop, color = tot)) +
+  geom_point() +
+  geom_smooth(aes(weight = tot)) +
+  facet_wrap(~ year) +
+  ylim(c(0, 1))
+
+# il y a moyen d'estimer la prop de jeunes en prenant une fenetre large
+# Bourse de Fabricius visible 8 mois environ, source? & repro commence vers le 1er Juin 
+# donc on détecte theoriquement tous les jeunes jusqu'au 1er février 
+# pas d'info ici
+
+# FR sample data: adult male proportion target ---------------------------------------
+
+# evolution of the sex ratio over the year
+FR_kill_2 %>% 
+  mutate(age = age_sex %>% str_extract(regex(".*(?=_)")),
+         sex = age_sex %>% str_extract(regex("(?<=_).*"))) %>% 
+  filter(age != "ind", sex != "ind") %>% 
+  group_by(age, month = month(date, label = TRUE)) %>%
+  nest() %>% 
+  mutate(data = data %>% 
+           map( ~.x %>% 
+                  mutate(tot = sum(shot)) %>% 
+                  filter(sex == "mal") %>%
+                  summarize(mal = sum(shot),
+                            tot = unique(tot), 
+                            ratio = mal/tot))) %>%
+  unnest(data) %>% 
+  ungroup() -> FR_target
+
+FR_target %>% 
+  ggplot(aes(x = month, y = ratio, group = age, fill = age)) +
+  geom_col(position = "dodge") +
+  geom_text(aes(label = round(tot))) + 
+  ylim(0, 1)
+# no trend over the year, issue in fall, perhaps because of bad sampling
+# one remove the August to December
+
+FR_kill_2 %>% 
+  mutate(age = age_sex %>% str_extract(regex(".*(?=_)")),
+         sex = age_sex %>% str_extract(regex("(?<=_).*"))) %>% 
+  filter(age != "ind", sex != "ind", month(date) %in% c(1:7)) %>% 
+  group_by(age) %>%
+  nest() %>% 
+  mutate(data = data %>% 
+           map(~ .x %>% 
+                 mutate(tot = sum(shot)) %>% 
+                 filter(sex == "mal") %>%
+                 summarize(mal = sum(shot),
+                           tot = unique(tot), 
+                           ratio = mal/tot))) %>%
+  unnest(data) %>% 
+  ungroup()
+# -> male proportion: 60% for adults, consistent with UK data
+
+# FR sample data: removal formatting -------------------------------------------------
+
+# attribution to the right year: 
+FR_kill_2 %>% 
+  left_join(FR_count %>% select(start, end, year)) -> FR_kill_3
+
+FR_kill_3 %>% 
+  mutate(age = age_sex %>% str_extract(regex(".*(?=_)")),
+         month = month(date, label = TRUE)) %>% 
+  group_by(year = year(date), month, age) %>% 
+  summarize(across(shot, sum)) %>% 
+  ggplot(aes(x = month, y = shot, fill = age)) +
+  geom_col(position = "dodge")
+
+# Any removal must be subtracted from the pop size if it was killed after the date of 
+# the winter count but before the reproduction
+# so one must differentiate removals between this period in the year
+# since no few chicks are observed before June, it is the criterion for the conversion.
+# but by precaution, one remove the juveniles also in May in case 
+# they are chicks of the year
+
+FR_kill_3 %>% 
+  mutate(age = age_sex %>% str_extract(regex(".*(?=_)")),
+         sex = age_sex %>% str_extract(regex("(?<=_).*")),
+         repro = if_else(date < year + months(6), "before_rep", "after_rep"),
+         repro = if_else(month(date) == 5 & age == "no_ad", "after_rep", repro)) %>% 
+  group_by(year, start, end, repro, age, sex) %>% 
+  summarize(across(shot, sum)) %>%
+  ungroup() -> FR_kill_4
+
+# raw dataviz of the removals by year
+FR_kill_4 %>% 
+  mutate(age_sex = str_c(age, "_", sex)) %>% 
+  group_by(year, age_sex) %>% 
+  summarize(across(shot, sum)) %>% 
+  ggplot(aes(x = year, y = shot, fill = age_sex)) +
+  geom_col()
+
+# full dataset
+crossing(FR_count %>% distinct(year, start, end), 
+         FR_kill_4 %>% distinct(repro, age, sex)) %>% 
+  left_join(FR_kill_4 %>% select(-c(start, end))) %>% 
+  mutate(shot = shot %>% replace_na(0)) %>% 
+  mutate(age = if_else(age == "jeu", "no_ad", age)) -> FR_kill_5
+
+FR_kill_5 %>% 
+  filter(repro == "before_rep") %>% 
+  group_by(year) %>% 
+  summarize(killed_before_rep = sum(shot)) -> FR_to_remove
+
+# to chek  --------------------------------------------------------------------------
+
+ 
 # age ratio 
 FR_kill_2 %>% 
   mutate(age = age_sex %>% str_extract(regex(".*(?=_)"))) %>% 

@@ -328,7 +328,7 @@ UK_kill_2 %>%
          age = age_sex %>% str_extract(regex(".*(?=_)")),
          sex = age_sex %>% str_extract(regex("(?<=_).*")),
          age = age %>% str_replace("-", "_"),
-         repro = if_else(date < year + months(6), "before_rep", "after_rep"),
+         repro = if_else(date < year + months(5), "before_rep", "after_rep"),
          repro = if_else(month(date) == 5 & age == "no_ad", "after_rep", repro)) %>% 
   group_by(year, start, end, repro, age, sex) %>% 
   summarize(across(shot, sum)) %>%
@@ -424,12 +424,12 @@ FR_nb_3 %>%
               ungroup() %>% 
               rename(sex_app = data)) %>% 
   mutate(end = c(.$start[-1], last(.$start) + years(1)) - days(1)) %>% 
-  select(year, start, end, count, site, source, age, sex_app) -> FR_count
+  select(year, start, end, count, site, source, age, sex_app) -> FR_nb_4
 
 # FR sample data: age evolution analyses ---------------------------------------------
 
 get_year_2 <- function(x) {
-  FR_count %>% filter(start <= x, end >= x) %>% pull(year)}
+  FR_nb_4 %>% filter(start <= x, end >= x) %>% pull(year)}
 
 FR_kill %>% 
   select(Date, starts_with("Nb_tue"), -Nb_tue_oeuf, Nb_obs_oeuf) %>% 
@@ -461,10 +461,9 @@ FR_kill %>%
   filter(year(date) > 1986) %>% 
   rowwise() %>% 
   mutate(year = get_year_2(date)) %>% 
-  left_join(FR_count %>% select(start, end, year)) %>% 
+  left_join(FR_nb_4 %>% select(start, end, year)) %>% 
   ungroup() %>% 
   pivot_longer(contains("_"), names_to = "age_sex", values_to = "shot") -> FR_kill_2
-
 
 # age of the samples over the year 
 FR_kill_2 %>% 
@@ -584,7 +583,7 @@ FR_kill_2 %>%
 
 # attribution to the right year: 
 FR_kill_2 %>% 
-  left_join(FR_count %>% select(start, end, year)) -> FR_kill_3
+  left_join(FR_nb_4 %>% select(start, end, year)) -> FR_kill_3
 
 FR_kill_3 %>% 
   mutate(age = age_sex %>% str_extract(regex(".*(?=_)")),
@@ -604,7 +603,7 @@ FR_kill_3 %>%
 FR_kill_3 %>% 
   mutate(age = age_sex %>% str_extract(regex(".*(?=_)")),
          sex = age_sex %>% str_extract(regex("(?<=_).*")),
-         repro = if_else(date < year + months(6), "before_rep", "after_rep"),
+         repro = if_else(date < year + months(5), "before_rep", "after_rep"),
          repro = if_else(month(date) == 5 & age == "no_ad", "after_rep", repro)) %>% 
   group_by(year, start, end, repro, age, sex) %>% 
   summarize(across(shot, sum)) %>%
@@ -619,7 +618,7 @@ FR_kill_4 %>%
   geom_col()
 
 # full dataset
-crossing(FR_count %>% distinct(year, start, end), 
+crossing(FR_nb_4 %>% distinct(year, start, end), 
          FR_kill_4 %>% distinct(repro, age, sex)) %>% 
   left_join(FR_kill_4 %>% select(-c(start, end))) %>% 
   mutate(shot = shot %>% replace_na(0)) %>% 
@@ -630,70 +629,18 @@ FR_kill_5 %>%
   group_by(year) %>% 
   summarize(killed_before_rep = sum(shot)) -> FR_to_remove
 
-# to chek  --------------------------------------------------------------------------
+# FR count data: merge to complete all variables -------------------------------------
 
- 
-# age ratio 
-FR_kill_2 %>% 
-  mutate(age = age_sex %>% str_extract(regex(".*(?=_)"))) %>% 
-  group_by(yday = yday(date),
-           year = year(date), 
-           age) %>% 
-  summarize(across(shot, sum)) %>% 
-  ungroup() -> FR_prop
-
-FR_prop %>% 
-  group_by(yday, age) %>% 
-  summarize(across(shot, sum)) %>% 
-  ggplot(aes(x = yday, y = shot, fill = age)) +
-  geom_col(position = "dodge")
-# gros prélèvement en été, donc on n'a pas la proportion du recrutement dans les hivernants
-
-FR_prop %>% 
-  group_by(yday, age) %>% 
-  summarize(across(shot, sum)) %>% 
-  group_by(yday) %>% 
-  nest() %>% 
-  mutate(tot = data %>% map_dbl(~ .x %>% pull(shot) %>% sum())) %>% 
-  unnest(data) %>% 
-  ungroup() %>% 
-  mutate(prop = shot / tot) %>% 
-  ggplot(aes(x = yday,  y = prop, color = age)) +
-  geom_point() +
-  geom_smooth()
-# transition bien visible à partir du 120ème jour vers les nouveaux jeunes
-
-FR_prop %>% 
-  group_by(yday) %>% 
-  nest() %>% 
-  mutate(tot = data %>% map_dbl(~ .x %>% filter(age!= "ind") %>% pull(shot) %>% sum())) %>% 
-  unnest(data) %>% 
-  ungroup() %>% 
-  filter(tot != 0) %>% 
-  mutate(prop = shot / tot) %>%
-  filter(age == "no_ad") %>% 
-  ggplot(aes(x = yday,  y = prop, color = tot)) +
-  geom_point() +
-  geom_smooth(aes(weight = tot)) +
-  facet_wrap(~ year) +
-  ylim(c(0, 1))
+FR_nb_4 %>% 
+  left_join(FR_to_remove) %>% 
+  relocate(killed_before_rep, .after = source) -> FR_count
 
 
-
-FR_kill_2 %>% 
-  mutate(repro = if_else(date < year + months(6), "before", "after"),
-         age = age_sex %>% str_extract(regex(".*(?=_)")),
-         sex = age_sex %>% str_extract(regex("(?<=_).*")),
-         age = if_else(age == "jeu", "no_ad", age)) %>% 
-  select(-date) %>% 
-  group_by(across(-shot)) %>% 
-  summarize(across(shot, sum)) %>% 
-  ungroup() %>% 
-  select(names(UK_kill_4)) -> FR_kill_2
+# Binding of the two datasets ----------------------------------------------------------
 
 # unique dataset
 crossing(year = seq(ymd(19600101), ymd(20210101), "year"), 
-         repro = c("before", "after"), 
+         repro = c("before_rep", "after_rep"), 
          age = c("ad", "no_ad", "ind"), 
          sex = c("fem", "mal", "ind")) %>% 
   filter(!(age == "ind" & sex != "ind")) -> base
@@ -704,7 +651,7 @@ base %>%
          pop = "UK") -> UK_frag
 
 base %>%
-  left_join(FR_kill_2) %>% 
+  left_join(FR_kill_5) %>% 
   mutate(shot = shot %>% replace_na(0), 
          pop = "FR") -> FR_frag
 
@@ -720,14 +667,14 @@ frag %>%
 base %>% 
   distinct(year) %>%
   left_join(UK_count) %>% 
-  mutate(pop = "UK") -> UK_count 
+  mutate(pop = "UK") -> UK_count_2
 
 base %>% 
   distinct(year) %>% 
   left_join(FR_count) %>% 
-  mutate(pop = "FR") -> FR_count
+  mutate(pop = "FR") -> FR_count_2
 
-bind_rows(UK_count, FR_count) %>% 
+bind_rows(UK_count_2, FR_count_2) %>% 
   mutate(start = if_else(is.na(start), year, start),
          end = if_else(is.na(end), year + years(1), end),
          across(c(count, site), ~ .x %>% replace_na(0))) -> count
@@ -742,7 +689,9 @@ count %>%
 list(frag, count) %>% 
   write_rds("./Output/Ruddy_duck_data.rds")
 
-# traitement des indéterminés
+
+# exploration of the undetermined  ----------------------------------------------------
+
 FR_kill %>% 
   select(Date, starts_with("Nb_tue"), -Nb_tue_oeuf, Nb_obs_oeuf) %>% 
   rename(Nb_tue_oeuf = Nb_obs_oeuf) %>% 

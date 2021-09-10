@@ -645,17 +645,20 @@ crossing(year = seq(ymd(19600101), ymd(20210101), "year"),
   filter(!(age == "ind" & sex != "ind")) -> base
 
 base %>% 
-  left_join(UK_kill_4) %>% 
+  left_join(UK_kill_4 %>% distinct(year, start, end)) %>% 
+  left_join(UK_kill_4 %>% select(-c(start, end))) %>% 
   mutate(shot = shot %>% replace_na(0), 
          pop = "UK") -> UK_frag
 
 base %>%
-  left_join(FR_kill_5) %>% 
+  left_join(FR_kill_5 %>% distinct(year, start, end)) %>% 
+  left_join(FR_kill_5 %>% select(-c(start, end))) %>% 
   mutate(shot = shot %>% replace_na(0), 
          pop = "FR") -> FR_frag
 
 bind_rows(UK_frag, FR_frag) %>% 
-  mutate(across(c(start, end), ~ if_else(is.na(.x), year, year + years(1)))) %>% 
+  mutate(start = if_else(is.na(start), year, start),
+         end = if_else(is.na(end), year + years(1) - days(1), end)) %>% 
   select(year, start, end, pop, repro, age, sex, shot) -> frag
 
 frag %>% 
@@ -675,8 +678,8 @@ base %>%
 
 bind_rows(UK_count_2, FR_count_2) %>% 
   mutate(start = if_else(is.na(start), year, start),
-         end = if_else(is.na(end), year + years(1), end),
-         across(c(count, site), ~ .x %>% replace_na(0))) -> count
+         end = if_else(is.na(end), year + years(1) - days(1), end),
+         across(c(count, site, killed_before_rep), ~ .x %>% replace_na(0))) -> count
 
 count %>% 
   ggplot(aes(x = year, y = count, color = pop)) + 

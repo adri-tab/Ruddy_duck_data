@@ -1,5 +1,6 @@
-Sys.setlocale("LC_ALL", "English")
+# Package loading -------------------------------------------------------------------
 
+Sys.setlocale("LC_ALL", "English")
 require(tidyverse)
 require(readxl)
 require(lubridate)
@@ -327,7 +328,7 @@ UK_kill_2 %>%
          age = age_sex %>% str_extract(regex(".*(?=_)")),
          sex = age_sex %>% str_extract(regex("(?<=_).*")),
          age = age %>% str_replace("-", "_"),
-         repro = if_else(date < year + months(5), "before_rep", "after_rep"),
+         repro = if_else(date < (year + months(5)), "before_rep", "after_rep"),
          repro = if_else(month(date) == 5 & age == "no_ad", "after_rep", repro)) %>% 
   group_by(year, start, end, repro, age, sex) %>% 
   summarize(across(shot, sum)) %>%

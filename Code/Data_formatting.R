@@ -392,8 +392,10 @@ FR_kill %>%
   filter(Lieu_nom == "LAC DE GRAND LIEU", 
          month(Date) %in% c(10, 11, 12, 1, 2, 3),
          !is.na(Nb_obs_tot)) %>%
-  mutate(year = if_else(month(Date) > 6, year(Date) + 1, year(Date)) %>% str_c("0101") %>% ymd()) %>% 
-  select(year, date = Date, count = Nb_obs_tot, obs_type_mal = Nb_obs_mal_ad, obs_type_fem = Nb_obs_fem_ad) %>% 
+  mutate(year = if_else(month(Date) > 6, year(Date) + 1, year(Date)) %>%
+           str_c("0101") %>% ymd()) %>% 
+  select(year, date = Date, count = Nb_obs_tot, 
+         obs_type_mal = Nb_obs_mal_ad, obs_type_fem = Nb_obs_fem_ad) %>% 
   anti_join(FR_nb_2, by = c("date", "year")) %>%
   bind_rows(FR_nb_2) %>% 
   right_join(tibble(year = seq(min(.$year), max(.$year), by = "year"))) %>% 
@@ -692,7 +694,7 @@ count %>%
 list(frag, count) %>% 
   write_rds("./Output/Ruddy_duck_data.rds")
 
-# exploration of the undetermined  ----------------------------------------------------
+# Exploration of the undetermined  ----------------------------------------------------
 
 FR_kill %>% 
   select(Date, starts_with("Nb_tue"), -Nb_tue_oeuf, Nb_obs_oeuf) %>% 
@@ -706,8 +708,11 @@ FR_kill %>%
   rowwise() %>% 
   mutate_at(vars(starts_with("Nb")), replace_na, 0) %>% 
   mutate(
-    Nb_tue_tot = max(c(Nb_tue_tot, sum(Nb_tue_fem_ad, Nb_tue_mal_ad, Nb_tue_juv, Nb_tue_pulli, Nb_tue_ind, Nb_tue_oeuf))),
-    Nb_tue_ind = Nb_tue_tot - sum(Nb_tue_fem_ad, Nb_tue_mal_ad, Nb_tue_juv, Nb_tue_pulli, Nb_tue_oeuf)
+    Nb_tue_tot = max(c(Nb_tue_tot, 
+                       sum(Nb_tue_fem_ad, Nb_tue_mal_ad, Nb_tue_juv, 
+                           Nb_tue_pulli, Nb_tue_ind, Nb_tue_oeuf))),
+    Nb_tue_ind = Nb_tue_tot - sum(Nb_tue_fem_ad, Nb_tue_mal_ad, 
+                                  Nb_tue_juv, Nb_tue_pulli, Nb_tue_oeuf)
   ) %>% 
   filter(Nb_tue_tot > 0) %>% 
   mutate(ad = Nb_tue_fem_ad + Nb_tue_mal_ad, 
@@ -739,5 +744,3 @@ ind %>%
   ggplot(aes(x = yday, y = shot, color = age)) +
   geom_smooth() +
   geom_point()
-
-
